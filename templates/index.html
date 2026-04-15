@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Football Sentiment Analysis</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: #0f0f1a; color: #e0e0e0; }
+
+    header {
+      background: linear-gradient(135deg, #1a1a2e, #16213e);
+      padding: 1.5rem 2rem;
+      border-bottom: 2px solid #e63946;
+    }
+    header h1 { color: #fff; font-size: 1.8rem; }
+    header p  { color: #aaa; margin-top: 0.3rem; }
+
+    .container { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
+
+    /* Metrics row */
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+    .metric-card {
+      background: #1a1a2e; border-radius: 10px; padding: 1.2rem;
+      text-align: center; border: 1px solid #2a2a4e;
+    }
+    .metric-card h2 { font-size: 2rem; margin-bottom: 0.3rem; }
+    .metric-card p  { color: #aaa; font-size: 0.85rem; }
+    .pos { color: #27ae60; } .neg { color: #e74c3c; } .neu { color: #f39c12; } .tot { color: #3498db; }
+
+    /* Filters */
+    .filters {
+      display: flex; gap: 1rem; flex-wrap: wrap;
+      background: #1a1a2e; padding: 1rem; border-radius: 10px;
+      margin-bottom: 1.5rem; border: 1px solid #2a2a4e;
+    }
+    .filters select, .filters button {
+      padding: 0.5rem 1rem; border-radius: 6px; border: 1px solid #444;
+      background: #0f0f1a; color: #e0e0e0; cursor: pointer;
+    }
+    .filters button { background: #e63946; border-color: #e63946; color: #fff; font-weight: bold; }
+
+    /* Chart row */
+    .charts { display: grid; grid-template-columns: 1fr 2fr; gap: 1rem; margin-bottom: 1.5rem; }
+    .chart-card {
+      background: #1a1a2e; border-radius: 10px; padding: 1.2rem;
+      border: 1px solid #2a2a4e;
+    }
+    .chart-card h3 { color: #fff; margin-bottom: 1rem; font-size: 1rem; }
+
+    /* Predict box */
+    .predict-box {
+      background: #1a1a2e; border-radius: 10px; padding: 1.5rem;
+      border: 1px solid #2a2a4e; margin-bottom: 1.5rem;
+    }
+    .predict-box h3 { color: #fff; margin-bottom: 1rem; }
+    .predict-row { display: flex; gap: 0.8rem; flex-wrap: wrap; }
+    .predict-row textarea {
+      flex: 1; min-width: 250px; padding: 0.8rem; border-radius: 8px;
+      border: 1px solid #444; background: #0f0f1a; color: #e0e0e0;
+      resize: vertical; min-height: 80px; font-size: 0.95rem;
+    }
+    .predict-controls { display: flex; flex-direction: column; gap: 0.6rem; min-width: 180px; }
+    .predict-controls select, .predict-controls button {
+      padding: 0.6rem 1rem; border-radius: 6px; border: 1px solid #444;
+      background: #0f0f1a; color: #e0e0e0;
+    }
+    .predict-controls button {
+      background: #e63946; border-color: #e63946; color: #fff;
+      font-weight: bold; cursor: pointer; font-size: 1rem;
+    }
+    #predict-result {
+      margin-top: 1rem; padding: 1rem; border-radius: 8px;
+      display: none; font-size: 1rem;
+    }
+    .result-positive { background: #0a3a1e; border: 1px solid #27ae60; color: #2ecc71; }
+    .result-negative { background: #3a0a0a; border: 1px solid #e74c3c; color: #e74c3c; }
+    .result-neutral  { background: #3a2e00; border: 1px solid #f39c12; color: #f39c12; }
+    .result-error    { background: #2a1a00; border: 1px solid #e67e22; color: #e67e22; }
+
+    /* Table */
+    .table-card {
+      background: #1a1a2e; border-radius: 10px; padding: 1.2rem;
+      border: 1px solid #2a2a4e;
+    }
+    .table-card h3 { color: #fff; margin-bottom: 1rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th { background: #0f0f1a; color: #aaa; padding: 0.6rem; text-align: left; border-bottom: 1px solid #2a2a4e; }
+    td { padding: 0.55rem; border-bottom: 1px solid #1a1a3e; vertical-align: top; }
+    td:first-child { max-width: 400px; word-wrap: break-word; }
+    .badge {
+      display: inline-block; padding: 0.2rem 0.6rem; border-radius: 12px;
+      font-size: 0.78rem; font-weight: bold;
+    }
+    .badge-positive { background: #0a3a1e; color: #2ecc71; }
+    .badge-negative { background: #3a0a0a; color: #e74c3c; }
+    .badge-neutral  { background: #3a2e00; color: #f39c12; }
+
+    .no-models {
+      background: #2a1500; border: 1px solid #e67e22; color: #e67e22;
+      padding: 1rem; border-radius: 8px; margin-bottom: 1rem;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>⚽ Football Sentiment Analysis</h1>
+  <p>Public opinion on football players — Twitter, Reddit, ESPN</p>
+</header>
+
+<div class="container">
+
+  {% if not models_ready %}
+  <div class="no-models">
+    Models not trained yet. Run <code>python3 model_training.py</code> to train and save models.
+    Live prediction will be available after training.
+  </div>
+  {% endif %}
+
+  <!-- METRICS -->
+  <div class="metrics">
+    <div class="metric-card"><h2 class="tot">{{ total }}</h2><p>Total Records</p></div>
+    <div class="metric-card"><h2 class="pos">{{ pos_pct }}%</h2><p>Positive</p></div>
+    <div class="metric-card"><h2 class="neg">{{ neg_pct }}%</h2><p>Negative</p></div>
+    <div class="metric-card"><h2 class="neu">{{ neu_pct }}%</h2><p>Neutral</p></div>
+  </div>
+
+  <!-- FILTERS -->
+  <form class="filters" method="GET">
+    <select name="player">
+      <option value="All" {% if selected_player == 'All' %}selected{% endif %}>All Players</option>
+      {% for p in players %}
+        <option value="{{ p }}" {% if selected_player == p %}selected{% endif %}>{{ p }}</option>
+      {% endfor %}
+    </select>
+    <select name="source">
+      <option value="All" {% if selected_source == 'All' %}selected{% endif %}>All Sources</option>
+      {% for s in sources %}
+        <option value="{{ s }}" {% if selected_source == s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Filter</button>
+  </form>
+
+  <!-- CHARTS -->
+  <div class="charts">
+    <div class="chart-card">
+      <h3>Sentiment Split</h3>
+      <canvas id="pieChart" height="220"></canvas>
+    </div>
+    <div class="chart-card">
+      <h3>Distribution</h3>
+      <canvas id="barChart" height="220"></canvas>
+    </div>
+  </div>
+
+  <!-- LIVE PREDICTION -->
+  {% if models_ready %}
+  <div class="predict-box">
+    <h3>Live Prediction — Type any text</h3>
+    <div class="predict-row">
+      <textarea id="predict-input" placeholder="e.g. Messi was absolutely unreal tonight, best in the world by far..."></textarea>
+      <div class="predict-controls">
+        <select id="model-select">
+          {% for m in model_names %}
+            <option value="{{ m }}">{{ m }}</option>
+          {% endfor %}
+        </select>
+        <button onclick="runPredict()">Analyse</button>
+      </div>
+    </div>
+    <div id="predict-result"></div>
+  </div>
+  {% endif %}
+
+  <!-- DATA TABLE -->
+  <div class="table-card">
+    <h3>Recent Records
+      {% if selected_player != 'All' %} — {{ selected_player }}{% endif %}
+      {% if selected_source != 'All' %} ({{ selected_source }}){% endif %}
+    </h3>
+    {% if records %}
+    <table>
+      <thead>
+        <tr>
+          <th>Text</th>
+          {% if selected_player == 'All' %}<th>Player</th>{% endif %}
+          <th>Source</th>
+          <th>Sentiment</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in records %}
+        <tr>
+          <td>{{ row.get('Text', row.get('cleaned_text', ''))[:120] }}{% if row.get('Text', '')|length > 120 %}…{% endif %}</td>
+          {% if selected_player == 'All' %}<td>{{ row.get('Player', '—') }}</td>{% endif %}
+          <td>{{ row.get('Source', '—') }}</td>
+          <td>
+            {% set s = row.get('Sentiment', '') | lower %}
+            <span class="badge badge-{{ s }}">{{ row.get('Sentiment', '—') }}</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p style="color:#aaa;padding:1rem">No records found.</p>
+    {% endif %}
+  </div>
+
+</div>
+
+<script>
+  // ── CHARTS ────────────────────────────────────────────────
+  const counts = {{ counts | tojson }};
+  const labels = Object.keys(counts);
+  const values = Object.values(counts);
+  const colMap  = { positive: '#27ae60', negative: '#e74c3c', neutral: '#f39c12' };
+  const colours = labels.map(l => colMap[l.toLowerCase()] || '#3498db');
+
+  new Chart(document.getElementById('pieChart'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data: values, backgroundColor: colours, borderWidth: 2, borderColor: '#0f0f1a' }] },
+    options: { plugins: { legend: { labels: { color: '#e0e0e0' } } }, cutout: '60%' }
+  });
+
+  new Chart(document.getElementById('barChart'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Records', data: values, backgroundColor: colours, borderRadius: 6 }] },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#aaa' }, grid: { color: '#1a1a3e' } },
+        y: { ticks: { color: '#aaa' }, grid: { color: '#1a1a3e' } }
+      }
+    }
+  });
+
+  // ── LIVE PREDICTION ───────────────────────────────────────
+  async function runPredict() {
+    const text  = document.getElementById('predict-input').value.trim();
+    const model = document.getElementById('model-select').value;
+    const box   = document.getElementById('predict-result');
+
+    if (!text) { box.style.display = 'none'; return; }
+
+    box.className = ''; box.style.display = 'block';
+    box.innerHTML = 'Analysing...';
+
+    try {
+      const resp = await fetch('/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, model }),
+      });
+      const data = await resp.json();
+
+      if (data.error) {
+        box.className = 'result-error';
+        box.innerHTML = `Error: ${data.error}`;
+      } else {
+        const s   = data.sentiment.toLowerCase();
+        const cls = `result-${s}`;
+        const conf = data.confidence ? ` — ${data.confidence}% confidence` : '';
+        box.className = cls;
+        box.innerHTML = `
+          <strong>Sentiment: ${data.sentiment.toUpperCase()}${conf}</strong><br>
+          <small style="opacity:0.7">Cleaned text: ${data.cleaned_text}</small>
+        `;
+      }
+    } catch (e) {
+      box.className = 'result-error';
+      box.innerHTML = 'Request failed. Is the server running?';
+    }
+  }
+
+  // Allow Ctrl+Enter to submit
+  document.getElementById && document.getElementById('predict-input') &&
+    document.getElementById('predict-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) runPredict();
+    });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,9 @@
+# Large data files — too big for GitHub
+saved_models/
+results/
+__pycache__/
+*.npy
+*.pkl
+
+# Virtual environment
+venv/
